@@ -1,5 +1,5 @@
 module Rack
-  module Perf
-    VERSION = "1.0.3"
+  class Perf
+    VERSION = "1.1.0"
   end
 end
