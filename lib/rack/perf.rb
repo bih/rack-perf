@@ -32,7 +32,12 @@ module Rack
       ip_addr = request.ip
       ip_addr = env["HTTP_X_FORWARDED_FOR"] if env["HTTP_X_FORWARDED_FOR"]
 
-      send_data(request.ip, request.request_method, request.url, get_normalized_path(request), status, runtime)
+      normalized_uri = get_normalized_path(request)
+
+      if normalized_uri
+        send_data(request.ip, request.request_method, request.url, normalized_uri, status, runtime)
+      end
+      
       [status, headers, body]
     end
 
