@@ -1,6 +1,7 @@
 module Rack
   class Perf
     require_relative "perf/version"
+    require 'unirest'
 
     attr_reader :starttime
     private :starttime
@@ -28,7 +29,7 @@ module Rack
 
       # run the current request
       request = Rack::Request.new(env)
-      @status, @headers, @body = stack.call(env)
+      status, headers, body = stack.call(env)
 
       # log the end time of the request
       @endtime = Time.now
@@ -53,28 +54,23 @@ module Rack
     # this method sends up the single timing request up to Perf
     # TODO: queue this up in a batch
     private def send_data(ip_addr, request_method, request_url, normalized_uri, status_code, time_in_millis)
-      uri = URI.parse("https://data.perf.sh")
+      head = {
+        "Content-Type" => "application/json",
+        "X-Perf-Public-API-Key" => api_key
+      }
 
-      http = Net::HTTP.new(uri.host, uri.port)
-      http.use_ssl = true
-
-      request = Net::HTTP::Post.new('/ingest')
-      request.add_field('Content-Type', 'application/json')
-
-      request.add_field('X-Perf-Public-API-Key', api_key)
-      request.body = [{
+      params = {
         'ip_addr' => ip_addr,
         'request_method' => request_method,
         'request_url' => request_url,
         'normalized_uri' => normalized_uri,
         'status_code' => status_code,
         'time_in_millis' => time_in_millis
-      }].to_json
+      }
 
-      puts request.body if debug
-
-      response = http.request(request)
-      # TODO: handle the incoming response
+      Unirest.post "https://data.perf.sh/ingest", headers:head, parameters:[params].to_json { |response|
+        # TODO: handle the incoming response
+      }
     end
 
     # this gets us the matched normalized path so that we can aggregate
@@ -124,18 +120,6 @@ module Rack
 
     private def env
       @env
-    end
-
-    private def headers
-      @headers
-    end
-
-    private def status
-      @status
-    end
-
-    private def body
-      @body
     end
   end
 end
