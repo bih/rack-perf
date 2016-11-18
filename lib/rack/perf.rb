@@ -3,22 +3,18 @@ module Rack
     require_relative "perf/version"
     require 'unirest'
 
-    attr_reader :starttime
-    private :starttime
+    HIDDEN_READABLE_FIELDS = [
+      :starttime, :endtime, :api_key,
+      :debug, :stack, :env
+    ]
 
-    attr_reader :endtime
-    private :endtime
-
-    attr_reader :api_key
-    private :api_key
-
-    attr_reader :debug
-    private :debug
+    attr_reader *HIDDEN_READABLE_FIELDS
+    private     *HIDDEN_READABLE_FIELDS
 
     def initialize(stack, api_key, debug = false)
-      @stack = stack
+      @stack   = stack
       @api_key = api_key
-      @debug = debug
+      @debug   = debug
     end
 
     def call(env)
@@ -51,56 +47,65 @@ module Rack
       [status, headers, body]
     end
 
+    private
+
     # this method sends up the single timing request up to Perf
     # TODO: queue this up in a batch
-    private def send_data(ip_addr, request_method, request_url, normalized_uri, status_code, time_in_millis)
+    def send_data(ip_addr, request_method, request_url, normalized_uri, status_code, time_in_millis)
       head = {
-        "Content-Type" => "application/json",
+        "Content-Type"          => "application/json",
         "X-Perf-Public-API-Key" => api_key
       }
 
       params = {
-        'ip_addr' => ip_addr,
+        'ip_addr'        => ip_addr,
         'request_method' => request_method,
-        'request_url' => request_url,
+        'request_url'    => request_url,
         'normalized_uri' => normalized_uri,
-        'status_code' => status_code,
+        'status_code'    => status_code,
         'time_in_millis' => time_in_millis
       }
 
-      Unirest.post "https://data.perf.sh/ingest", headers:head, parameters:[params].to_json { |response|
-        # TODO: handle the incoming response
-      }
+      Unirest.post(
+        "https://data.perf.sh/ingest",
+        headers: head,
+        parameters: [params].to_json { |response|
+          # TODO: handle the incoming response
+        })
     end
 
     # this gets us the matched normalized path so that we can aggregate
     # on it accordingly
-    private def get_normalized_path(request)
+    def get_normalized_path(request)
       path = request.path
 
       begin
-        route = Rails.application.routes.recognize_path path, method: request.request_method
+        route = Rails.application.routes.recognize_path(path, method: request.request_method)
         params = {}
-        route.each{ |param, value|
-          if not ["controller", "action"].include?(param.to_s)
+
+        route.each do |param, value|
+          unless ["controller", "action"].include?(param.to_s)
             params[param.to_s] = value
           end
-        }
+        end
 
         normalized_path = []
-        path.split(/\//).each { |path_part|
-          params.each { |param, path_value|
+
+        path.split(/\//).each do |path_part|
+          params.each do |param, path_value|
             if path_part == path_value
-              path_part = ":" + param.to_s
+              path_part = ":%s" % param.to_s
             end
 
-            if params["format"] && path_part == path_value + "." + params["format"]
-              path_part = ":" + param.to_s
+            format = params["format"].to_s
+
+            if format && path_part == ("%s.%s" % [path_value, format])
+              path_part = ":%s" % param.to_s
             end
-          }
+          end
 
           normalized_path.push(path_part)
-        }
+        end
 
         return normalized_path.join("/")
       rescue ActionController::RoutingError
@@ -110,16 +115,8 @@ module Rack
 
     # the time comes in unix seconds, so we need to
     # convert it to milliseconds and round
-    private def runtime
+    def runtime
       ((endtime - starttime) * 1000).round
-    end
-
-    private def stack
-      @stack
-    end
-
-    private def env
-      @env
     end
   end
 end
